@@ -1,0 +1,23 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+altair = "==4"
+langchain = "*"
+pypdf2 = "*"
+python-dotenv = "*"
+streamlit = "*"
+openai = "*"
+faiss-cpu = "*"
+tiktoken = "*"
+huggingface-hub = "*"
+instructorembedding = "*"
+sentence-transformers = "*"
+black = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.11"
