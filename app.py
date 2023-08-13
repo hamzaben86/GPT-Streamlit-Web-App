@@ -3,6 +3,8 @@ from dotenv import load_dotenv
 from PyPDF2 import PdfReader
 import docx2txt
 from langchain.text_splitter import CharacterTextSplitter
+from langchain.embeddings import OpenAIEmbeddings
+from langchain.vectorstores import FAISS
 
 load_dotenv()
 
@@ -44,6 +46,12 @@ def get_text_chunks(raw_text):
     return chunks
 
 
+def get_vector_store(text_chunks):
+    embeddings = OpenAIEmbeddings(model="text-embedding-ada-002")
+    vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
+    return vectorstore
+
+
 def main():
     # Stremlit App
     st.set_page_config(page_title="Chat with Documents using GPT-4")
@@ -63,12 +71,14 @@ def main():
             with st.spinner("Processing"):
                 # get the raw contents of the document
                 raw_text = get_doc_text(docs)
+                # st.write(raw_text)
 
                 # get the text chunks
                 text_chunks = get_text_chunks(raw_text)
-                st.write(text_chunks)
+                # st.write(text_chunks)
 
                 # create vector store (knowledge base)
+                vectorstore = get_vector_store(text_chunks)
 
 
 if __name__ == "__main__":
