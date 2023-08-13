@@ -6,14 +6,43 @@ from PyPDF2 import PdfReader
 import docx2txt
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.embeddings import OpenAIEmbeddings, HuggingFaceInstructEmbeddings
-from langchain.vectorstores import FAISS
+from langchain.vectorstores import FAISS, qdrant
 from langchain.chat_models import ChatOpenAI
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationalRetrievalChain
 from langchain.llms import HuggingFaceHub
 from htmlTemplates import css, bot_template, user_template
+from qdrant_client import QdrantClient
+from qdrant_client.http import models
+import requests
 
 load_dotenv()
+
+
+def get_qdrant_client():
+    client = QdrantClient(
+        url=os.environ["QDRANT_HOST"],
+        api_key=os.environ["QDRANT_API_KEY"],
+    )
+    return client
+
+
+def create_qdrant_collection(collection_name: str = "my-collection"):
+    client = get_qdrant_client()
+    st.write("Create new qdrant collection: ", collection_name)
+    client.recreate_collection(
+        collection_name="{collection_name}",
+        vectors_config=models.VectorParams(size=100, distance=models.Distance.COSINE),
+    )
+
+
+def get_qdrant_collection(collection_name: str = "my-collection"):
+    response = requests.get(
+        url=os.environ["QDRANT_HOST"] + "/collections",
+        headers={"api-key": f'{os.environ["QDRANT_API_KEY"]}'},
+    )
+    if collection_name not in response["result"]["collections"]:
+        create_qdrant_collection(collection_name=collection_name)
 
 
 def get_doc_text(docs):

@@ -17,6 +17,7 @@ instructorembedding = "*"
 sentence-transformers = "*"
 black = "*"
 docx2txt = "*"
+qdrant-client = "*"
 
 [dev-packages]
 
