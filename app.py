@@ -1,10 +1,16 @@
+import os
+import logging
 import streamlit as st
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
 import docx2txt
 from langchain.text_splitter import CharacterTextSplitter
-from langchain.embeddings import OpenAIEmbeddings
+from langchain.embeddings import OpenAIEmbeddings, HuggingFaceInstructEmbeddings
 from langchain.vectorstores import FAISS
+from langchain.chat_models import ChatOpenAI
+from langchain.memory import ConversationBufferMemory
+from langchain.chains import ConversationalRetrievalChain
+
 
 load_dotenv()
 
@@ -30,7 +36,7 @@ def get_doc_text(docs):
             if ".docx" in doc.name:
                 text += docx2txt.process(doc)
     except:
-        print(f"Unable to extract text from {doc}:", exc_info=True)
+        logging.error(f"Unable to extract text from {doc}:", exc_info=True)
 
     return text
 
@@ -46,15 +52,40 @@ def get_text_chunks(raw_text):
     return chunks
 
 
-def get_vector_store(text_chunks):
-    embeddings = OpenAIEmbeddings(model="text-embedding-ada-002")
-    vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
+def get_vector_store(text_chunks, embedding="text-embedding-ada-002"):
+    st.write("Embedding model: ", embedding)
+    if embedding == "text-embedding-ada-002":
+        embedding_model = OpenAIEmbeddings(model="text-embedding-ada-002")
+
+    elif embedding == "instructor-base":
+        embedding_model = HuggingFaceInstructEmbeddings(
+            model_name="hkunlp/instructor-base", model_kwargs={"device": "cpu"}
+        )
+    else:
+        logging.error("Invalid embedding model provided")
+
+    st.write("Creating local FAISS vector store..")
+    vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embedding_model)
     return vectorstore
+
+
+def get_conversation_chain(vectorstore):
+    llm = ChatOpenAI()
+    memory = ConversationBufferMemory(
+        memory_key="chat_history", return_messages=True
+    )  # buffer for storing conversation memory
+    conversation_chain = ConversationalRetrievalChain.from_llm(
+        llm=llm, retriever=vectorstore.as_retriever(), memory=memory
+    )
+    return conversation_chain
 
 
 def main():
     # Stremlit App
     st.set_page_config(page_title="Chat with Documents using GPT-4")
+
+    if "conversation" not in st.session_state:
+        st.session_state.conversation = None
 
     st.header("Chat with Documents using GPT-4")
     st.text_input("Ask a question about your documents:")
@@ -78,7 +109,10 @@ def main():
                 # st.write(text_chunks)
 
                 # create vector store (knowledge base)
-                vectorstore = get_vector_store(text_chunks)
+                vectorstore = get_vector_store(text_chunks=text_chunks)
+
+                # create conversation chain (make conversation variable peristent)
+                st.session_state.conversation = get_conversation_chain(vectorstore)
 
 
 if __name__ == "__main__":
