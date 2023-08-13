@@ -16,6 +16,7 @@ huggingface-hub = "*"
 instructorembedding = "*"
 sentence-transformers = "*"
 black = "*"
+docx2txt = "*"
 
 [dev-packages]
 
