@@ -6,33 +6,46 @@ from PyPDF2 import PdfReader
 import docx2txt
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.embeddings import OpenAIEmbeddings, HuggingFaceInstructEmbeddings
-from langchain.vectorstores import FAISS, qdrant
+from langchain.vectorstores import FAISS
+from langchain.vectorstores import Qdrant
 from langchain.chat_models import ChatOpenAI
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationalRetrievalChain
 from langchain.llms import HuggingFaceHub
 from htmlTemplates import css, bot_template, user_template
-from qdrant_client import QdrantClient
-from qdrant_client.http import models
+import qdrant_client
 import requests
 
 load_dotenv()
 
 
 def get_qdrant_client():
-    client = QdrantClient(
+    client = qdrant_client.QdrantClient(
         url=os.environ["QDRANT_HOST"],
         api_key=os.environ["QDRANT_API_KEY"],
     )
     return client
 
 
-def create_qdrant_collection(collection_name: str = "my-collection"):
+def create_qdrant_collection(collection_name: str):
     client = get_qdrant_client()
     st.write("Create new qdrant collection: ", collection_name)
     client.recreate_collection(
         collection_name="{collection_name}",
-        vectors_config=models.VectorParams(size=100, distance=models.Distance.COSINE),
+        vectors_config=qdrant_client.http.models.VectorParams(
+            size=1536,  # 1536 for OpenAI embeddings, 768 for instructor-xl
+            distance=qdrant_client.http.models.Distance.COSINE,  # distance metric for similarity search
+        ),
+    )
+
+
+def create_qdrant_vector_store():
+    client = get_qdrant_client()
+    embeddings = get_embedding_model()
+    doc_store = Qdrant(
+        client=client,
+        collection_name="texts",
+        embeddings=embeddings,
     )
 
 
@@ -41,7 +54,12 @@ def get_qdrant_collection(collection_name: str = "my-collection"):
         url=os.environ["QDRANT_HOST"] + "/collections",
         headers={"api-key": f'{os.environ["QDRANT_API_KEY"]}'},
     )
-    if collection_name not in response["result"]["collections"]:
+    collections = response["result"]["collections"]
+
+    if not any(
+        collection["name"] == collection_name
+        for collection in collections["result"]["collections"]
+    ):
         create_qdrant_collection(collection_name=collection_name)
 
 
@@ -75,31 +93,38 @@ def get_text_chunks(raw_text):
     text_splitter = CharacterTextSplitter(
         separator="\n",
         chunk_size=1000,  # characters count
-        chunk_overlap=200,  # overlap goal is preserve context
+        chunk_overlap=200,  # overlap goal to preserve context
         length_function=len,  # len function from Python
     )
     chunks = text_splitter.split_text(raw_text)
     return chunks
 
 
-def get_vector_store(text_chunks, embedding="text-embedding-ada-002"):
-    st.write("Embedding model: ", embedding)
-    if embedding == "text-embedding-ada-002":
+def get_embedding_model(embedding_model_name: str = "text-embedding-ada-002"):
+    if embedding_model_name == "text-embedding-ada-002":
         embedding_model = OpenAIEmbeddings(model="text-embedding-ada-002")
 
-    elif embedding == "instructor-base":
+    elif embedding_model_name == "instructor-base":
         embedding_model = HuggingFaceInstructEmbeddings(
             model_name="hkunlp/instructor-base", model_kwargs={"device": "cpu"}
         )
     else:
-        logging.error("Invalid embedding model provided")
+        logging.error("Invalid embedding model name:", embedding_model_name)
 
+    st.write("Embedding model: ", embedding_model)
+    return embedding_model
+
+
+def get_vector_store(text_chunks, embedding="text-embedding-ada-002"):
+    # get_embedding_model
+    embedding_model = get_embedding_model()
+    # FAISS vector DB (local)
     st.write("Creating local FAISS vector store..")
     vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embedding_model)
     return vectorstore
 
 
-def get_conversation_chain(vectorstore, llm_model="OpenAI"):
+def get_llm_model(llm_model: str = "OpenAI"):
     if llm_model == "OpenAI":
         llm = ChatOpenAI()
 
@@ -108,13 +133,15 @@ def get_conversation_chain(vectorstore, llm_model="OpenAI"):
             repo_id="google/flan-t5-xxl",
             model_kwargs={"temperature": 0.5, "max_length": 512},
         )
-
     else:
-        logging.error("Unavailable LLM model argument..")
+        logging.error("Invalid LLM name:", llm_model)
 
-    memory = ConversationBufferMemory(
-        memory_key="chat_history", return_messages=True
-    )  # buffer for storing conversation memory
+    return llm
+
+
+def get_conversation_chain(vectorstore, llm_model="OpenAI"):
+    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+    llm = get_llm_model(llm_model)
     conversation_chain = ConversationalRetrievalChain.from_llm(
         llm=llm, retriever=vectorstore.as_retriever(), memory=memory
     )
