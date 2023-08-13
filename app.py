@@ -2,7 +2,7 @@ import streamlit as st
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
 import docx2txt
-import logging
+from langchain.text_splitter import CharacterTextSplitter
 
 load_dotenv()
 
@@ -33,6 +33,17 @@ def get_doc_text(docs):
     return text
 
 
+def get_text_chunks(raw_text):
+    text_splitter = CharacterTextSplitter(
+        separator="\n",
+        chunk_size=1000,  # characters count
+        chunk_overlap=200,  # overlap goal is preserve context
+        length_function=len,  # len function from Python
+    )
+    chunks = text_splitter.split_text(raw_text)
+    return chunks
+
+
 def main():
     # Stremlit App
     st.set_page_config(page_title="Chat with Documents using GPT-4")
@@ -52,8 +63,10 @@ def main():
             with st.spinner("Processing"):
                 # get the raw contents of the document
                 raw_text = get_doc_text(docs)
-                st.write(raw_text)
+
                 # get the text chunks
+                text_chunks = get_text_chunks(raw_text)
+                st.write(text_chunks)
 
                 # create vector store (knowledge base)
 
