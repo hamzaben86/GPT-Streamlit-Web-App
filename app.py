@@ -10,7 +10,7 @@ from langchain.vectorstores import FAISS
 from langchain.chat_models import ChatOpenAI
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationalRetrievalChain
-
+from htmlTemplates import css, bot_template, user_template
 
 load_dotenv()
 
@@ -80,15 +80,28 @@ def get_conversation_chain(vectorstore):
     return conversation_chain
 
 
+def handle_userinput(user_question):
+    response = st.session_state.conversation({"question": user_question})
+    st.write(response)
+
+
 def main():
     # Stremlit App
     st.set_page_config(page_title="Chat with Documents using GPT-4")
+
+    st.write(css, unsafe_allow_html=True)
 
     if "conversation" not in st.session_state:
         st.session_state.conversation = None
 
     st.header("Chat with Documents using GPT-4")
-    st.text_input("Ask a question about your documents:")
+    user_question = st.text_input("Ask a question about your documents:")
+
+    if user_question:
+        handle_userinput(user_question)
+
+    st.write(user_template, unsafe_allow_html=True)
+    st.write(bot_template, unsafe_allow_html=True)
 
     with st.sidebar:
         # sidebar context
