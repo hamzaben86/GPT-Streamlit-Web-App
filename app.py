@@ -10,6 +10,7 @@ from langchain.vectorstores import FAISS
 from langchain.chat_models import ChatOpenAI
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationalRetrievalChain
+from langchain.llms import HuggingFaceHub
 from htmlTemplates import css, bot_template, user_template
 
 load_dotenv()
@@ -69,8 +70,19 @@ def get_vector_store(text_chunks, embedding="text-embedding-ada-002"):
     return vectorstore
 
 
-def get_conversation_chain(vectorstore):
-    llm = ChatOpenAI()
+def get_conversation_chain(vectorstore, llm_model="OpenAI"):
+    if llm_model == "OpenAI":
+        llm = ChatOpenAI()
+
+    elif llm_model == "HuggingFace":
+        llm = HuggingFaceHub(
+            repo_id="google/flan-t5-xxl",
+            model_kwargs={"temperature": 0.5, "max_length": 512},
+        )
+
+    else:
+        logging.error("Unavailable LLM model argument..")
+
     memory = ConversationBufferMemory(
         memory_key="chat_history", return_messages=True
     )  # buffer for storing conversation memory
@@ -82,7 +94,19 @@ def get_conversation_chain(vectorstore):
 
 def handle_userinput(user_question):
     response = st.session_state.conversation({"question": user_question})
-    st.write(response)
+    st.session_state.chat_history = response["chat_history"]
+
+    for i, message in enumerate(st.session_state.chat_history):
+        if i % 2 == 0:
+            st.write(
+                user_template.replace("{{MSG}}", message.content),
+                unsafe_allow_html=True,
+            )
+        else:
+            st.write(
+                bot_template.replace("{{MSG}}", message.content),
+                unsafe_allow_html=True,
+            )
 
 
 def main():
@@ -94,14 +118,17 @@ def main():
     if "conversation" not in st.session_state:
         st.session_state.conversation = None
 
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = None
+
     st.header("Chat with Documents using GPT-4")
     user_question = st.text_input("Ask a question about your documents:")
 
-    if user_question:
-        handle_userinput(user_question)
-
-    st.write(user_template, unsafe_allow_html=True)
-    st.write(bot_template, unsafe_allow_html=True)
+    try:
+        if user_question:
+            handle_userinput(user_question)
+    except:
+        pass
 
     with st.sidebar:
         # sidebar context
@@ -125,7 +152,9 @@ def main():
                 vectorstore = get_vector_store(text_chunks=text_chunks)
 
                 # create conversation chain (make conversation variable peristent)
-                st.session_state.conversation = get_conversation_chain(vectorstore)
+                st.session_state.conversation = get_conversation_chain(
+                    vectorstore=vectorstore, llm_model="HuggingFace"
+                )
 
 
 if __name__ == "__main__":
